@@ -282,14 +282,26 @@ const PatientDashboard = () => {
   const [selectedService, setSelectedService] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [appointmentDate, setAppointmentDate] = useState('');
-  const [appointmentTime, setAppointmentTime] = useState('');
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Fetch available slots when doctor, service, or date changes
+  useEffect(() => {
+    if (selectedDoctor && selectedService && appointmentDate) {
+      fetchAvailableSlots();
+    } else {
+      setAvailableSlots([]);
+      setSelectedSlot('');
+    }
+  }, [selectedDoctor, selectedService, appointmentDate]);
 
   const fetchData = async () => {
     try {
@@ -307,13 +319,28 @@ const PatientDashboard = () => {
     }
   };
 
+  const fetchAvailableSlots = async () => {
+    setSlotsLoading(true);
+    try {
+      const response = await axios.get(
+        `${API}/time-slots/${selectedDoctor}/available?date=${appointmentDate}&service_id=${selectedService}`
+      );
+      setAvailableSlots(response.data);
+      setSelectedSlot('');
+    } catch (error) {
+      console.error('Error fetching available slots:', error);
+      setAvailableSlots([]);
+    }
+    setSlotsLoading(false);
+  };
+
   const bookAppointment = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
 
     try {
-      const appointmentDateTime = new Date(`${appointmentDate}T${appointmentTime}`);
+      const appointmentDateTime = new Date(selectedSlot);
       
       await axios.post(`${API}/appointments`, {
         doctor_id: selectedDoctor,
@@ -326,7 +353,8 @@ const PatientDashboard = () => {
       setSelectedService('');
       setSelectedDoctor('');
       setAppointmentDate('');
-      setAppointmentTime('');
+      setSelectedSlot('');
+      setAvailableSlots([]);
       setNotes('');
       fetchData();
     } catch (error) {
@@ -371,7 +399,7 @@ const PatientDashboard = () => {
                 <option value="">Select a service</option>
                 {services.map(service => (
                   <option key={service.id} value={service.id}>
-                    {service.name} - ${service.price}
+                    {service.name} - ${service.price} ({service.duration_minutes} mins)
                   </option>
                 ))}
               </select>
@@ -403,16 +431,38 @@ const PatientDashboard = () => {
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
-            <div className="mb-4">
-              <label className="block text-gray-700 text-sm font-bold mb-2">Time</label>
-              <input
-                type="time"
-                value={appointmentTime}
-                onChange={(e) => setAppointmentTime(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
+            
+            {/* Available Time Slots */}
+            {selectedDoctor && selectedService && appointmentDate && (
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">Available Time Slots</label>
+                {slotsLoading ? (
+                  <div className="text-center py-4 text-gray-500">Loading available slots...</div>
+                ) : availableSlots.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                    {availableSlots.map((slot, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setSelectedSlot(slot.datetime)}
+                        className={`p-2 text-sm border rounded-md transition-colors ${
+                          selectedSlot === slot.datetime
+                            ? 'bg-blue-500 text-white border-blue-500'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50'
+                        }`}
+                      >
+                        {slot.time}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-500 bg-gray-50 rounded border">
+                    No available time slots for selected date
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="mb-4">
               <label className="block text-gray-700 text-sm font-bold mb-2">Notes (Optional)</label>
               <textarea
@@ -424,7 +474,7 @@ const PatientDashboard = () => {
             </div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !selectedSlot}
               className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
             >
               {loading ? 'Booking...' : 'Book Appointment'}
