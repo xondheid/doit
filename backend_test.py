@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import uuid
 
 # Backend URL from frontend/.env
-BASE_URL = "https://cbccc41c-1207-40a9-8a62-b180fe67b422.preview.emergentagent.com/api"
+BASE_URL = "https://d28dd0c4-9f9d-436c-a782-395e80651953.preview.emergentagent.com/api"
 
 class MedicalPlatformTester:
     def __init__(self):
