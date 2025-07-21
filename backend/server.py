@@ -190,6 +190,10 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 @api_router.get("/users/doctors", response_model=List[User])
 async def get_doctors():
     doctors = await db.users.find({"role": "doctor"}).to_list(100)
+    # Remove MongoDB's _id field to avoid serialization issues
+    for doctor in doctors:
+        if '_id' in doctor:
+            del doctor['_id']
     return [User(**doctor) for doctor in doctors]
 
 # Medical Service routes
