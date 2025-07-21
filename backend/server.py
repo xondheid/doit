@@ -260,7 +260,141 @@ async def get_doctor_time_slots(doctor_id: str, date: Optional[str] = None):
         query["date"] = date
     
     slots = await db.time_slots.find(query).to_list(100)
+    # Remove MongoDB's _id field to avoid serialization issues
+    for slot in slots:
+        if '_id' in slot:
+            del slot['_id']
     return [TimeSlot(**slot) for slot in slots]
+
+@api_router.get("/time-slots/{doctor_id}/available", response_model=List[dict])
+async def get_available_time_slots(doctor_id: str, date: str, service_id: str):
+    """Get available time slots for a specific doctor, date and service considering duration"""
+    
+    # Get service to know duration
+    service = await db.medical_services.find_one({"id": service_id})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    service_duration = service["duration_minutes"]
+    
+    # Get existing appointments for the date
+    start_of_day = f"{date}T00:00:00"
+    end_of_day = f"{date}T23:59:59"
+    
+    existing_appointments = await db.appointments.find({
+        "doctor_id": doctor_id,
+        "appointment_date": {
+            "$gte": start_of_day,
+            "$lt": end_of_day
+        },
+        "status": {"$ne": "cancelled"}
+    }).to_list(100)
+    
+    # Get doctor's time slots for the date (if any)
+    doctor_slots = await db.time_slots.find({
+        "doctor_id": doctor_id,
+        "date": date,
+        "is_available": True
+    }).to_list(100)
+    
+    # If no specific slots defined, create default working hours (9 AM to 5 PM)
+    if not doctor_slots:
+        default_slots = []
+        for hour in range(9, 17):  # 9 AM to 5 PM
+            slot_time = f"{hour:02d}:00"
+            default_slots.append({
+                "start_time": slot_time,
+                "end_time": f"{hour + 1:02d}:00",
+                "is_available": True
+            })
+    else:
+        default_slots = [{"start_time": slot["start_time"], "end_time": slot["end_time"], "is_available": slot["is_available"]} for slot in doctor_slots]
+    
+    # Check availability considering existing appointments and service duration
+    available_slots = []
+    
+    for slot in default_slots:
+        if not slot["is_available"]:
+            continue
+            
+        slot_start = datetime.strptime(f"{date} {slot['start_time']}", "%Y-%m-%d %H:%M")
+        slot_end = datetime.strptime(f"{date} {slot['end_time']}", "%Y-%m-%d %H:%M")
+        
+        # Generate 30-minute intervals within this slot
+        current_time = slot_start
+        while current_time + timedelta(minutes=service_duration) <= slot_end:
+            appointment_end = current_time + timedelta(minutes=service_duration)
+            
+            # Check if this time conflicts with existing appointments
+            conflicts = False
+            for apt in existing_appointments:
+                apt_start = datetime.fromisoformat(apt["appointment_date"].replace('Z', '+00:00')).replace(tzinfo=None)
+                
+                # Get appointment service duration
+                apt_service = await db.medical_services.find_one({"id": apt["service_id"]})
+                apt_duration = apt_service["duration_minutes"] if apt_service else 30
+                apt_end = apt_start + timedelta(minutes=apt_duration)
+                
+                # Check for overlap
+                if (current_time < apt_end and appointment_end > apt_start):
+                    conflicts = True
+                    break
+            
+            if not conflicts:
+                available_slots.append({
+                    "datetime": current_time.isoformat(),
+                    "time": current_time.strftime("%H:%M"),
+                    "duration_minutes": service_duration,
+                    "available": True
+                })
+            
+            # Move to next 30-minute interval
+            current_time += timedelta(minutes=30)
+    
+    return available_slots
+
+@api_router.post("/doctors/{doctor_id}/working-hours")
+async def set_doctor_working_hours(
+    doctor_id: str, 
+    working_hours: dict, 
+    current_user: User = Depends(get_current_user)
+):
+    """Set working hours for a doctor (creates time slots for the week)"""
+    if current_user.role not in ["doctor", "admin"] or (current_user.role == "doctor" and current_user.id != doctor_id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Clear existing time slots for the doctor
+    await db.time_slots.delete_many({"doctor_id": doctor_id})
+    
+    # Create time slots for the next 30 days based on working hours
+    from datetime import date, timedelta
+    
+    today = date.today()
+    for i in range(30):  # Create slots for next 30 days
+        current_date = today + timedelta(days=i)
+        day_name = current_date.strftime("%A").lower()
+        
+        if day_name in working_hours and working_hours[day_name]["available"]:
+            start_time = working_hours[day_name]["start"]
+            end_time = working_hours[day_name]["end"]
+            
+            # Create hourly slots
+            start_hour = int(start_time.split(":")[0])
+            end_hour = int(end_time.split(":")[0])
+            
+            for hour in range(start_hour, end_hour):
+                time_slot = {
+                    "id": str(uuid.uuid4()),
+                    "doctor_id": doctor_id,
+                    "date": current_date.isoformat(),
+                    "start_time": f"{hour:02d}:00",
+                    "end_time": f"{hour + 1:02d}:00",
+                    "is_available": True,
+                    "created_at": datetime.utcnow()
+                }
+                await db.time_slots.insert_one(time_slot)
+    
+    return {"message": "Working hours set successfully"}
 
 # Appointment routes
 @api_router.post("/appointments", response_model=Appointment)
