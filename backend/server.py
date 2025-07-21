@@ -278,8 +278,8 @@ async def get_available_time_slots(doctor_id: str, date: str, service_id: str):
     service_duration = service["duration_minutes"]
     
     # Get existing appointments for the date
-    start_of_day = f"{date}T00:00:00"
-    end_of_day = f"{date}T23:59:59"
+    start_of_day = datetime.strptime(f"{date}T00:00:00", "%Y-%m-%dT%H:%M:%S")
+    end_of_day = datetime.strptime(f"{date}T23:59:59", "%Y-%m-%dT%H:%M:%S")
     
     existing_appointments = await db.appointments.find({
         "doctor_id": doctor_id,
