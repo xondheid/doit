@@ -402,17 +402,66 @@ async def book_appointment(appointment_data: AppointmentCreate, current_user: Us
     if current_user.role != "patient":
         raise HTTPException(status_code=403, detail="Only patients can book appointments")
     
-    # Check if the requested time slot is available
-    appointment_date = appointment_data.appointment_date
-    existing_appointment = await db.appointments.find_one({
+    # Get service details for duration
+    service = await db.medical_services.find_one({"id": appointment_data.service_id})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    service_duration = service["duration_minutes"]
+    appointment_start = appointment_data.appointment_date
+    appointment_end = appointment_start + timedelta(minutes=service_duration)
+    
+    # Check for conflicts with existing appointments
+    existing_appointments = await db.appointments.find({
         "doctor_id": appointment_data.doctor_id,
-        "appointment_date": appointment_date,
         "status": {"$ne": "cancelled"}
-    })
+    }).to_list(100)
     
-    if existing_appointment:
-        raise HTTPException(status_code=400, detail="Time slot not available")
+    for existing_apt in existing_appointments:
+        existing_start = existing_apt["appointment_date"]
+        if isinstance(existing_start, str):
+            existing_start = datetime.fromisoformat(existing_start.replace('Z', '+00:00')).replace(tzinfo=None)
+        
+        # Get existing appointment service duration
+        existing_service = await db.medical_services.find_one({"id": existing_apt["service_id"]})
+        existing_duration = existing_service["duration_minutes"] if existing_service else 30
+        existing_end = existing_start + timedelta(minutes=existing_duration)
+        
+        # Check for time overlap
+        if (appointment_start < existing_end and appointment_end > existing_start):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Time slot conflicts with existing appointment from {existing_start.strftime('%H:%M')} to {existing_end.strftime('%H:%M')}"
+            )
     
+    # Verify doctor is available during requested time (check time slots if they exist)
+    appointment_date_str = appointment_start.date().isoformat()
+    appointment_time_str = appointment_start.strftime("%H:%M")
+    
+    doctor_slots = await db.time_slots.find({
+        "doctor_id": appointment_data.doctor_id,
+        "date": appointment_date_str
+    }).to_list(100)
+    
+    # If doctor has defined time slots, check availability
+    if doctor_slots:
+        slot_available = False
+        for slot in doctor_slots:
+            if not slot["is_available"]:
+                continue
+                
+            slot_start = datetime.strptime(f"{appointment_date_str} {slot['start_time']}", "%Y-%m-%d %H:%M")
+            slot_end = datetime.strptime(f"{appointment_date_str} {slot['end_time']}", "%Y-%m-%d %H:%M")
+            
+            # Check if appointment fits within this slot
+            if appointment_start >= slot_start and appointment_end <= slot_end:
+                slot_available = True
+                break
+        
+        if not slot_available:
+            raise HTTPException(status_code=400, detail="Doctor is not available during the requested time")
+    
+    # Create the appointment
     appointment_dict = appointment_data.dict()
     appointment_dict["patient_id"] = current_user.id
     appointment_dict["status"] = "scheduled"
