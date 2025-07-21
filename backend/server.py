@@ -328,7 +328,9 @@ async def get_available_time_slots(doctor_id: str, date: str, service_id: str):
             # Check if this time conflicts with existing appointments
             conflicts = False
             for apt in existing_appointments:
-                apt_start = datetime.fromisoformat(apt["appointment_date"].replace('Z', '+00:00')).replace(tzinfo=None)
+                apt_start = apt["appointment_date"]
+                if isinstance(apt_start, str):
+                    apt_start = datetime.fromisoformat(apt_start.replace('Z', '+00:00')).replace(tzinfo=None)
                 
                 # Get appointment service duration
                 apt_service = await db.medical_services.find_one({"id": apt["service_id"]})
