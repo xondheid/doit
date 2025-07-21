@@ -548,6 +548,18 @@ const PatientDashboard = () => {
 const DoctorDashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [workingHours, setWorkingHours] = useState({
+    monday: { available: true, start: '09:00', end: '17:00' },
+    tuesday: { available: true, start: '09:00', end: '17:00' },
+    wednesday: { available: true, start: '09:00', end: '17:00' },
+    thursday: { available: true, start: '09:00', end: '17:00' },
+    friday: { available: true, start: '09:00', end: '17:00' },
+    saturday: { available: false, start: '09:00', end: '17:00' },
+    sunday: { available: false, start: '09:00', end: '17:00' }
+  });
+  const [showWorkingHours, setShowWorkingHours] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchAppointments();
@@ -565,15 +577,105 @@ const DoctorDashboard = () => {
   const cancelAppointment = async (appointmentId) => {
     try {
       await axios.put(`${API}/appointments/${appointmentId}/cancel`);
+      setMessage('Appointment cancelled successfully!');
       fetchAppointments();
     } catch (error) {
       console.error('Error cancelling appointment:', error);
+      setMessage('Error cancelling appointment');
     }
   };
 
+  const updateWorkingHours = async () => {
+    setLoading(true);
+    try {
+      await axios.post(`${API}/doctors/${user.id}/working-hours`, workingHours);
+      setMessage('Working hours updated successfully!');
+      setShowWorkingHours(false);
+    } catch (error) {
+      setMessage(error.response?.data?.detail || 'Error updating working hours');
+    }
+    setLoading(false);
+  };
+
+  const handleWorkingHourChange = (day, field, value) => {
+    setWorkingHours(prev => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [field]: value
+      }
+    }));
+  };
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h2 className="text-3xl font-bold text-gray-800 mb-8">Doctor Dashboard</h2>
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="flex justify-between items-center mb-8">
+        <h2 className="text-3xl font-bold text-gray-800">Doctor Dashboard</h2>
+        <button
+          onClick={() => setShowWorkingHours(!showWorkingHours)}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          {showWorkingHours ? 'Hide' : 'Set'} Working Hours
+        </button>
+      </div>
+      
+      {message && (
+        <div className={`p-4 mb-6 rounded ${message.includes('success') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+          {message}
+        </div>
+      )}
+
+      {/* Working Hours Section */}
+      {showWorkingHours && (
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h3 className="text-xl font-semibold mb-4">Set Working Hours</h3>
+          <div className="space-y-4">
+            {Object.entries(workingHours).map(([day, hours]) => (
+              <div key={day} className="flex items-center space-x-4">
+                <div className="w-24 font-medium capitalize">{day}</div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={hours.available}
+                    onChange={(e) => handleWorkingHourChange(day, 'available', e.target.checked)}
+                    className="mr-2"
+                  />
+                  Available
+                </label>
+                {hours.available && (
+                  <>
+                    <div className="flex items-center space-x-2">
+                      <span>From:</span>
+                      <input
+                        type="time"
+                        value={hours.start}
+                        onChange={(e) => handleWorkingHourChange(day, 'start', e.target.value)}
+                        className="px-3 py-1 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span>To:</span>
+                      <input
+                        type="time"
+                        value={hours.end}
+                        onChange={(e) => handleWorkingHourChange(day, 'end', e.target.value)}
+                        className="px-3 py-1 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={updateWorkingHours}
+            disabled={loading}
+            className="mt-4 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+          >
+            {loading ? 'Updating...' : 'Update Working Hours'}
+          </button>
+        </div>
+      )}
       
       <div className="bg-white rounded-lg shadow-md p-6">
         <h3 className="text-xl font-semibold mb-4">My Appointments</h3>
@@ -598,6 +700,28 @@ const DoctorDashboard = () => {
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       appointment.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
                       appointment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {appointment.status}
+                    </span>
+                    {appointment.status === 'scheduled' && (
+                      <button
+                        onClick={() => cancelAppointment(appointment.id)}
+                        className="mt-2 text-red-500 hover:text-red-700 text-sm"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
                       'bg-red-100 text-red-800'
                     }`}>
                       {appointment.status}
