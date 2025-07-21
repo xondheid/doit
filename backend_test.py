@@ -317,14 +317,36 @@ class MedicalPlatformTester:
             self.log_test("Get Services for Booking", False, f"Error: {str(e)}")
             return
 
+        # Get available time slots first
+        try:
+            tomorrow = (datetime.utcnow() + timedelta(days=1)).date().isoformat()
+            response = requests.get(f"{self.base_url}/time-slots/{self.doctor_id}/available", 
+                                  params={"date": tomorrow, "service_id": service_id})
+            
+            if response.status_code != 200:
+                self.log_test("Get Available Slots for Booking", False, f"Status: {response.status_code}")
+                return
+            
+            available_slots = response.json()
+            if not available_slots:
+                self.log_test("Get Available Slots for Booking", False, "No available slots")
+                return
+            
+            # Use the first available slot
+            first_slot = available_slots[0]
+            appointment_datetime = datetime.fromisoformat(first_slot["datetime"])
+            
+        except Exception as e:
+            self.log_test("Get Available Slots for Booking", False, f"Error: {str(e)}")
+            return
+
         # Test booking appointment as patient
         try:
             headers = {"Authorization": f"Bearer {self.patient_token}"}
-            appointment_date = datetime.utcnow() + timedelta(days=1)
             appointment_data = {
                 "doctor_id": self.doctor_id,
                 "service_id": service_id,
-                "appointment_date": appointment_date.isoformat(),
+                "appointment_date": appointment_datetime.isoformat(),
                 "notes": "Test appointment booking"
             }
             
