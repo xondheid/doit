@@ -122,9 +122,13 @@ class MedicalPlatformTester:
 
     def test_user_login(self):
         """Test user login for created users"""
+        if not self.patient_email or not self.doctor_email:
+            self.log_test("Login Setup", False, "Missing user emails from registration")
+            return
+            
         login_tests = [
-            {"email": "patient2@test.com", "password": "patient123", "role": "patient"},
-            {"email": "doctor2@test.com", "password": "doctor123", "role": "doctor"}
+            {"email": self.patient_email, "password": "patient123", "role": "patient"},
+            {"email": self.doctor_email, "password": "doctor123", "role": "doctor"}
         ]
         
         for login_data in login_tests:
