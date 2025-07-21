@@ -174,6 +174,9 @@ async def login(user_credentials: UserLogin):
     if not user_doc or not verify_password(user_credentials.password, user_doc["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     
+    # Remove MongoDB's _id field to avoid serialization issues
+    if '_id' in user_doc:
+        del user_doc['_id']
     user = User(**user_doc)
     access_token = create_access_token(data={"sub": user.email})
     
