@@ -209,6 +209,10 @@ async def create_service(service_data: MedicalServiceCreate, current_user: User 
 @api_router.get("/services", response_model=List[MedicalService])
 async def get_services():
     services = await db.medical_services.find({"is_active": True}).to_list(100)
+    # Remove MongoDB's _id field to avoid serialization issues
+    for service in services:
+        if '_id' in service:
+            del service['_id']
     return [MedicalService(**service) for service in services]
 
 @api_router.put("/services/{service_id}", response_model=MedicalService)
