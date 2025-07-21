@@ -877,6 +877,10 @@ class MedicalPlatformTester:
             "Register Doctor",
             "JWT Token Validation (Valid)",
             "Get Medical Services",
+            "Set Doctor Working Hours",
+            "Get Available Time Slots",
+            "Duration-Aware Conflict Detection",
+            "Default Working Hours (9 AM - 5 PM)",
             "Book Appointment (Patient)",
             "Role-Based Access Control"
         ]
