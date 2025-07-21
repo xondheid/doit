@@ -18,6 +18,8 @@ class MedicalPlatformTester:
         self.admin_token = None
         self.doctor_token = None
         self.patient_token = None
+        self.doctor_email = None
+        self.patient_email = None
         self.test_results = []
         self.created_service_id = None
         self.created_appointment_id = None
