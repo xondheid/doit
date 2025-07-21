@@ -722,28 +722,6 @@ const DoctorDashboard = () => {
     </div>
   );
 };
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {appointment.status}
-                    </span>
-                    {appointment.status === 'scheduled' && (
-                      <button
-                        onClick={() => cancelAppointment(appointment.id)}
-                        className="mt-2 text-red-500 hover:text-red-700 text-sm"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 const AdminDashboard = () => {
   const [services, setServices] = useState([]);
