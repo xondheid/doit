@@ -323,10 +323,13 @@ async def cancel_appointment(appointment_id: str, current_user: User = Depends(g
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
     
-    # Check permissions
+    # Check permissions - only patient or doctor involved in the appointment can cancel
     if (current_user.role == "patient" and appointment["patient_id"] != current_user.id) or \
-       (current_user.role == "doctor" and appointment["doctor_id"] != current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized to cancel this appointment")
+       (current_user.role == "doctor" and appointment["doctor_id"] != current_user.id) or \
+       (current_user.role == "admin"):
+        # Admin should not be able to cancel appointments unless they are the patient or doctor
+        if current_user.role == "admin" and appointment["patient_id"] != current_user.id and appointment["doctor_id"] != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized to cancel this appointment")
     
     await db.appointments.update_one(
         {"id": appointment_id}, 
