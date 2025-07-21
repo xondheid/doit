@@ -56,16 +56,19 @@ class MedicalPlatformTester:
 
     def test_user_registration(self):
         """Test user registration for all roles"""
+        import time
+        timestamp = str(int(time.time()))
+        
         users_to_create = [
             {
-                "email": "patient2@test.com",
+                "email": f"patient{timestamp}@test.com",
                 "password": "patient123",
                 "name": "Jane Patient",
                 "role": "patient",
                 "phone": "+1234567892"
             },
             {
-                "email": "doctor2@test.com", 
+                "email": f"doctor{timestamp}@test.com", 
                 "password": "doctor123",
                 "name": "Dr. Michael Smith",
                 "role": "doctor",
@@ -82,8 +85,10 @@ class MedicalPlatformTester:
                     if user_data["role"] == "doctor":
                         self.doctor_token = data["access_token"]
                         self.doctor_id = data["user"]["id"]
+                        self.doctor_email = user_data["email"]
                     elif user_data["role"] == "patient":
                         self.patient_token = data["access_token"]
+                        self.patient_email = user_data["email"]
                     
                     self.log_test(f"Register {user_data['role'].title()}", True, 
                                 f"User {user_data['name']} registered successfully")
