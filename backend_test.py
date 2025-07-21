@@ -826,7 +826,18 @@ class MedicalPlatformTester:
         # Medical services tests
         self.test_medical_services_crud()
         
-        # Appointment system tests
+        # Enhanced appointment system tests (NEW FEATURES)
+        print("\n🔥 TESTING ENHANCED APPOINTMENT BOOKING FEATURES")
+        print("-" * 50)
+        self.test_doctor_working_hours_management()
+        self.test_available_time_slots_api()
+        self.test_default_working_hours_behavior()
+        self.test_enhanced_appointment_conflict_detection()
+        self.test_time_slots_update_after_bookings()
+        
+        # Original appointment system tests
+        print("\n📅 TESTING CORE APPOINTMENT FEATURES")
+        print("-" * 50)
         self.test_appointment_booking_system()
         self.test_view_appointments()
         self.test_appointment_cancellation()
