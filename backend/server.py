@@ -159,9 +159,16 @@ async def register(user_data: UserCreate):
     user_dict = user_data.dict()
     del user_dict["password"]
     user_dict["hashed_password"] = hashed_password
+    user_dict["id"] = str(uuid.uuid4())
+    user_dict["created_at"] = datetime.utcnow()
     
-    user = User(**user_dict)
-    await db.users.insert_one(user.dict())
+    # Insert user data directly to preserve hashed_password
+    await db.users.insert_one(user_dict)
+    
+    # Create User object for response (without hashed_password)
+    user_response_dict = user_dict.copy()
+    del user_response_dict["hashed_password"]
+    user = User(**user_response_dict)
     
     # Create access token
     access_token = create_access_token(data={"sub": user.email})
