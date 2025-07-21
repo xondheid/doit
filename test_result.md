@@ -141,7 +141,7 @@ backend:
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
         - working: "needs_testing"
           agent: "main"
@@ -149,6 +149,9 @@ backend:
         - working: true
           agent: "testing"
           comment: "✅ COMPREHENSIVE TESTING COMPLETED: All appointment features working perfectly. Appointment creation by patients ✅, conflict detection for double booking ✅, viewing appointments by role ✅, appointment cancellation by patients and doctors ✅. Role-based access properly enforced - only patients can book, only involved parties can cancel."
+        - working: "enhancing"
+          agent: "main"
+          comment: "Enhancing appointment booking core logic with: 1) Smart time slot integration with appointments, 2) Service duration-aware conflict detection, 3) Available time slot API for frontend, 4) Automatic working hours slot generation, 5) Better conflict resolution considering overlapping times"
 
   - task: "User Role Management"
     implemented: true
