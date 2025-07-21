@@ -287,6 +287,10 @@ async def get_my_appointments(current_user: User = Depends(get_current_user)):
     # Enrich with user and service details
     enriched_appointments = []
     for apt in appointments:
+        # Remove MongoDB's _id field to avoid serialization issues
+        if '_id' in apt:
+            del apt['_id']
+            
         # Get patient info
         if current_user.role != "patient":
             patient = await db.users.find_one({"id": apt["patient_id"]})
