@@ -58,18 +58,18 @@ class MedicalPlatformTester:
         """Test user registration for all roles"""
         users_to_create = [
             {
-                "email": "patient@test.com",
+                "email": "patient2@test.com",
                 "password": "patient123",
-                "name": "John Patient",
+                "name": "Jane Patient",
                 "role": "patient",
-                "phone": "+1234567890"
+                "phone": "+1234567892"
             },
             {
-                "email": "doctor@test.com", 
+                "email": "doctor2@test.com", 
                 "password": "doctor123",
-                "name": "Dr. Sarah Wilson",
+                "name": "Dr. Michael Smith",
                 "role": "doctor",
-                "phone": "+1234567891",
+                "phone": "+1234567893",
                 "specialization": "General Practice"
             }
         ]
