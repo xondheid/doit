@@ -427,6 +427,348 @@ class MedicalPlatformTester:
             except Exception as e:
                 self.log_test("Cancel Appointment (Unauthorized)", False, f"Error: {str(e)}")
 
+    def test_doctor_working_hours_management(self):
+        """Test doctor working hours management system"""
+        if not self.doctor_token or not self.doctor_id:
+            self.log_test("Working Hours Setup", False, "Missing doctor token or ID")
+            return
+
+        # Test setting working hours as doctor
+        try:
+            headers = {"Authorization": f"Bearer {self.doctor_token}"}
+            working_hours = {
+                "monday": {"available": True, "start": "09:00", "end": "17:00"},
+                "tuesday": {"available": True, "start": "09:00", "end": "17:00"},
+                "wednesday": {"available": True, "start": "09:00", "end": "17:00"},
+                "thursday": {"available": True, "start": "09:00", "end": "17:00"},
+                "friday": {"available": True, "start": "09:00", "end": "17:00"},
+                "saturday": {"available": False, "start": "", "end": ""},
+                "sunday": {"available": False, "start": "", "end": ""}
+            }
+            
+            response = requests.post(f"{self.base_url}/doctors/{self.doctor_id}/working-hours", 
+                                   json=working_hours, headers=headers)
+            if response.status_code == 200:
+                self.log_test("Set Doctor Working Hours", True, "Working hours set successfully")
+            else:
+                self.log_test("Set Doctor Working Hours", False, 
+                            f"Status: {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("Set Doctor Working Hours", False, f"Error: {str(e)}")
+
+        # Test unauthorized working hours setting (patient trying to set doctor's hours)
+        if self.patient_token:
+            try:
+                headers = {"Authorization": f"Bearer {self.patient_token}"}
+                working_hours = {
+                    "monday": {"available": True, "start": "10:00", "end": "16:00"}
+                }
+                
+                response = requests.post(f"{self.base_url}/doctors/{self.doctor_id}/working-hours", 
+                                       json=working_hours, headers=headers)
+                if response.status_code == 403:
+                    self.log_test("Set Working Hours (Unauthorized)", True, 
+                                "Properly rejected unauthorized access")
+                else:
+                    self.log_test("Set Working Hours (Unauthorized)", False, 
+                                f"Expected 403, got {response.status_code}")
+            except Exception as e:
+                self.log_test("Set Working Hours (Unauthorized)", False, f"Error: {str(e)}")
+
+    def test_available_time_slots_api(self):
+        """Test available time slots API with service duration consideration"""
+        if not self.doctor_id:
+            self.log_test("Available Time Slots Setup", False, "Missing doctor ID")
+            return
+
+        # Get services first
+        try:
+            response = requests.get(f"{self.base_url}/services")
+            if response.status_code != 200:
+                self.log_test("Get Services for Time Slots", False, "Could not retrieve services")
+                return
+            
+            services = response.json()
+            if not services:
+                self.log_test("Get Services for Time Slots", False, "No services available")
+                return
+            
+            service_id = services[0]["id"]
+            service_duration = services[0]["duration_minutes"]
+        except Exception as e:
+            self.log_test("Get Services for Time Slots", False, f"Error: {str(e)}")
+            return
+
+        # Test getting available time slots for tomorrow
+        try:
+            tomorrow = (datetime.utcnow() + timedelta(days=1)).date().isoformat()
+            response = requests.get(f"{self.base_url}/time-slots/{self.doctor_id}/available", 
+                                  params={"date": tomorrow, "service_id": service_id})
+            
+            if response.status_code == 200:
+                slots = response.json()
+                self.log_test("Get Available Time Slots", True, 
+                            f"Retrieved {len(slots)} available slots for {service_duration}min service")
+                
+                # Verify slot structure
+                if slots:
+                    slot = slots[0]
+                    required_fields = ["datetime", "time", "duration_minutes", "available"]
+                    if all(field in slot for field in required_fields):
+                        self.log_test("Time Slot Structure Validation", True, 
+                                    "Slots contain all required fields")
+                    else:
+                        self.log_test("Time Slot Structure Validation", False, 
+                                    f"Missing fields in slot: {slot}")
+                        
+                    # Verify duration matches service
+                    if slot["duration_minutes"] == service_duration:
+                        self.log_test("Service Duration Integration", True, 
+                                    "Slot duration matches service duration")
+                    else:
+                        self.log_test("Service Duration Integration", False, 
+                                    f"Expected {service_duration}min, got {slot['duration_minutes']}min")
+            else:
+                self.log_test("Get Available Time Slots", False, 
+                            f"Status: {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("Get Available Time Slots", False, f"Error: {str(e)}")
+
+        # Test with invalid service ID
+        try:
+            tomorrow = (datetime.utcnow() + timedelta(days=1)).date().isoformat()
+            response = requests.get(f"{self.base_url}/time-slots/{self.doctor_id}/available", 
+                                  params={"date": tomorrow, "service_id": "invalid-service-id"})
+            
+            if response.status_code == 404:
+                self.log_test("Available Slots Invalid Service", True, 
+                            "Properly rejected invalid service ID")
+            else:
+                self.log_test("Available Slots Invalid Service", False, 
+                            f"Expected 404, got {response.status_code}")
+        except Exception as e:
+            self.log_test("Available Slots Invalid Service", False, f"Error: {str(e)}")
+
+    def test_enhanced_appointment_conflict_detection(self):
+        """Test enhanced appointment booking with duration-aware conflict detection"""
+        if not self.patient_token or not self.doctor_id:
+            self.log_test("Enhanced Conflict Detection Setup", False, "Missing patient token or doctor ID")
+            return
+
+        # Get services with different durations
+        try:
+            response = requests.get(f"{self.base_url}/services")
+            if response.status_code != 200:
+                self.log_test("Get Services for Conflict Test", False, "Could not retrieve services")
+                return
+            
+            services = response.json()
+            if len(services) < 2:
+                self.log_test("Get Services for Conflict Test", False, "Need at least 2 services for testing")
+                return
+            
+            # Sort services by duration to get different durations
+            services.sort(key=lambda x: x["duration_minutes"])
+            short_service = services[0]  # Shortest duration
+            long_service = services[-1]  # Longest duration
+            
+        except Exception as e:
+            self.log_test("Get Services for Conflict Test", False, f"Error: {str(e)}")
+            return
+
+        headers = {"Authorization": f"Bearer {self.patient_token}"}
+        base_time = datetime.utcnow() + timedelta(days=2)
+        base_time = base_time.replace(hour=10, minute=0, second=0, microsecond=0)
+
+        # Test 1: Book a long appointment
+        try:
+            appointment_data = {
+                "doctor_id": self.doctor_id,
+                "service_id": long_service["id"],
+                "appointment_date": base_time.isoformat(),
+                "notes": "Long duration appointment for conflict testing"
+            }
+            
+            response = requests.post(f"{self.base_url}/appointments", json=appointment_data, headers=headers)
+            if response.status_code == 200:
+                long_appointment_id = response.json()["id"]
+                self.log_test("Book Long Duration Appointment", True, 
+                            f"Booked {long_service['duration_minutes']}min appointment")
+                
+                # Test 2: Try to book overlapping short appointment (should fail)
+                overlap_time = base_time + timedelta(minutes=10)  # 10 minutes into the long appointment
+                overlap_data = {
+                    "doctor_id": self.doctor_id,
+                    "service_id": short_service["id"],
+                    "appointment_date": overlap_time.isoformat(),
+                    "notes": "This should conflict"
+                }
+                
+                response2 = requests.post(f"{self.base_url}/appointments", json=overlap_data, headers=headers)
+                if response2.status_code == 400:
+                    self.log_test("Duration-Aware Conflict Detection", True, 
+                                "Properly detected overlapping appointment conflict")
+                else:
+                    self.log_test("Duration-Aware Conflict Detection", False, 
+                                f"Expected 400, got {response2.status_code}")
+                
+                # Test 3: Book non-overlapping appointment after the long one
+                after_time = base_time + timedelta(minutes=long_service["duration_minutes"] + 5)
+                after_data = {
+                    "doctor_id": self.doctor_id,
+                    "service_id": short_service["id"],
+                    "appointment_date": after_time.isoformat(),
+                    "notes": "Non-overlapping appointment"
+                }
+                
+                response3 = requests.post(f"{self.base_url}/appointments", json=after_data, headers=headers)
+                if response3.status_code == 200:
+                    self.log_test("Non-Overlapping Appointment Booking", True, 
+                                "Successfully booked non-overlapping appointment")
+                else:
+                    self.log_test("Non-Overlapping Appointment Booking", False, 
+                                f"Status: {response3.status_code}", response3.text)
+                
+            else:
+                self.log_test("Book Long Duration Appointment", False, 
+                            f"Status: {response.status_code}", response.text)
+                
+        except Exception as e:
+            self.log_test("Enhanced Conflict Detection", False, f"Error: {str(e)}")
+
+    def test_default_working_hours_behavior(self):
+        """Test default working hours (9 AM - 5 PM) when no custom slots exist"""
+        if not self.doctor_id:
+            self.log_test("Default Working Hours Setup", False, "Missing doctor ID")
+            return
+
+        # Get services first
+        try:
+            response = requests.get(f"{self.base_url}/services")
+            services = response.json()
+            service_id = services[0]["id"] if services else None
+            if not service_id:
+                self.log_test("Get Service for Default Hours Test", False, "No services available")
+                return
+        except Exception as e:
+            self.log_test("Get Service for Default Hours Test", False, f"Error: {str(e)}")
+            return
+
+        # Test getting available slots for a doctor without custom working hours
+        try:
+            # Use a date far in the future to avoid conflicts with existing appointments
+            future_date = (datetime.utcnow() + timedelta(days=10)).date().isoformat()
+            response = requests.get(f"{self.base_url}/time-slots/{self.doctor_id}/available", 
+                                  params={"date": future_date, "service_id": service_id})
+            
+            if response.status_code == 200:
+                slots = response.json()
+                if slots:
+                    # Check if slots are within default working hours (9 AM - 5 PM)
+                    first_slot_time = slots[0]["time"]
+                    last_slot_time = slots[-1]["time"]
+                    
+                    # Parse times
+                    first_hour = int(first_slot_time.split(":")[0])
+                    last_hour = int(last_slot_time.split(":")[0])
+                    
+                    if first_hour >= 9 and last_hour < 17:
+                        self.log_test("Default Working Hours (9 AM - 5 PM)", True, 
+                                    f"Slots available from {first_slot_time} to {last_slot_time}")
+                    else:
+                        self.log_test("Default Working Hours (9 AM - 5 PM)", False, 
+                                    f"Slots outside expected hours: {first_slot_time} to {last_slot_time}")
+                else:
+                    self.log_test("Default Working Hours (9 AM - 5 PM)", False, 
+                                "No slots returned for default working hours")
+            else:
+                self.log_test("Default Working Hours (9 AM - 5 PM)", False, 
+                            f"Status: {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("Default Working Hours (9 AM - 5 PM)", False, f"Error: {str(e)}")
+
+    def test_time_slots_update_after_bookings(self):
+        """Test that available slots update correctly after appointments are booked"""
+        if not self.patient_token or not self.doctor_id:
+            self.log_test("Time Slots Update Setup", False, "Missing patient token or doctor ID")
+            return
+
+        # Get services
+        try:
+            response = requests.get(f"{self.base_url}/services")
+            services = response.json()
+            service_id = services[0]["id"] if services else None
+            if not service_id:
+                self.log_test("Get Service for Slots Update Test", False, "No services available")
+                return
+        except Exception as e:
+            self.log_test("Get Service for Slots Update Test", False, f"Error: {str(e)}")
+            return
+
+        # Use a date far in the future to avoid conflicts
+        test_date = (datetime.utcnow() + timedelta(days=15)).date().isoformat()
+        
+        # Get initial available slots
+        try:
+            response = requests.get(f"{self.base_url}/time-slots/{self.doctor_id}/available", 
+                                  params={"date": test_date, "service_id": service_id})
+            
+            if response.status_code == 200:
+                initial_slots = response.json()
+                initial_count = len(initial_slots)
+                
+                if initial_count > 0:
+                    # Book an appointment at the first available slot
+                    first_slot = initial_slots[0]
+                    appointment_time = datetime.fromisoformat(first_slot["datetime"])
+                    
+                    headers = {"Authorization": f"Bearer {self.patient_token}"}
+                    appointment_data = {
+                        "doctor_id": self.doctor_id,
+                        "service_id": service_id,
+                        "appointment_date": appointment_time.isoformat(),
+                        "notes": "Testing slot availability update"
+                    }
+                    
+                    booking_response = requests.post(f"{self.base_url}/appointments", 
+                                                   json=appointment_data, headers=headers)
+                    
+                    if booking_response.status_code == 200:
+                        # Get available slots again after booking
+                        response2 = requests.get(f"{self.base_url}/time-slots/{self.doctor_id}/available", 
+                                               params={"date": test_date, "service_id": service_id})
+                        
+                        if response2.status_code == 200:
+                            updated_slots = response2.json()
+                            updated_count = len(updated_slots)
+                            
+                            # Check if the booked slot is no longer available
+                            booked_slot_still_available = any(
+                                slot["datetime"] == first_slot["datetime"] 
+                                for slot in updated_slots
+                            )
+                            
+                            if not booked_slot_still_available and updated_count < initial_count:
+                                self.log_test("Available Slots Update After Booking", True, 
+                                            f"Slots reduced from {initial_count} to {updated_count}")
+                            else:
+                                self.log_test("Available Slots Update After Booking", False, 
+                                            f"Booked slot still available or count unchanged: {initial_count} -> {updated_count}")
+                        else:
+                            self.log_test("Available Slots Update After Booking", False, 
+                                        f"Failed to get updated slots: {response2.status_code}")
+                    else:
+                        self.log_test("Available Slots Update After Booking", False, 
+                                    f"Failed to book appointment: {booking_response.status_code}")
+                else:
+                    self.log_test("Available Slots Update After Booking", False, 
+                                "No initial slots available for testing")
+            else:
+                self.log_test("Available Slots Update After Booking", False, 
+                            f"Failed to get initial slots: {response.status_code}")
+        except Exception as e:
+            self.log_test("Available Slots Update After Booking", False, f"Error: {str(e)}")
+
     def test_role_based_access_control(self):
         """Test role-based permissions across the system"""
         # Already tested in individual functions, but let's do a summary test
