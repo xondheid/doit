@@ -229,6 +229,9 @@ async def update_service(service_id: str, service_data: MedicalServiceCreate, cu
         raise HTTPException(status_code=404, detail="Service not found")
     
     updated_service = await db.medical_services.find_one({"id": service_id})
+    # Remove MongoDB's _id field to avoid serialization issues
+    if updated_service and '_id' in updated_service:
+        del updated_service['_id']
     return MedicalService(**updated_service)
 
 # Time Slot routes
